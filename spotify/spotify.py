@@ -2,22 +2,16 @@ import os
 import logging
 import time
 import requests
-import aiohttp  # Import aiohttp module
-import re  # Import the re module
+import aiohttp
+import re
 import asyncio
 import aiofiles
 from concurrent.futures import ThreadPoolExecutor
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message
-from spotipy import Spotify
-from spotipy.oauth2 import SpotifyClientCredentials
 from typing import Optional
-from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, COMMAND_PREFIX
-
-# Spotify API Config
-SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
-SPOTIFY_TRACK_API_URL = "https://api.spotify.com/v1/tracks/"
+from config import COMMAND_PREFIX
 
 # Configure logging
 logging.basicConfig(
@@ -25,9 +19,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
-# Initialize Spotipy client
-spotify = Spotify(auth_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
 
 # ThreadPoolExecutor for blocking I/O operations
 executor = ThreadPoolExecutor(max_workers=10)
@@ -37,13 +28,6 @@ async def sanitize_filename(title: str) -> str:
     title = re.sub(r'[<>:"/\\|?*]', '', title)
     title = title.replace(' ', '_')
     return f"{title[:50]}_{int(time.time())}"
-
-async def format_duration(ms: int) -> str:
-    """Format duration from milliseconds to human-readable string."""
-    seconds = ms // 1000
-    minutes = (seconds % 3600) // 60
-    seconds = seconds % 60
-    return f"{minutes}m {seconds}s"
 
 async def download_image(url: str, output_path: str) -> Optional[str]:
     """Download image from a URL."""
@@ -57,34 +41,6 @@ async def download_image(url: str, output_path: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Failed to download image: {e}")
     return None
-
-async def get_spotify_access_token() -> Optional[str]:
-    """Fetch Spotify Access Token."""
-    try:
-        response = requests.post(SPOTIFY_TOKEN_URL, data={
-            "grant_type": "client_credentials",
-            "client_id": SPOTIFY_CLIENT_ID,
-            "client_secret": SPOTIFY_CLIENT_SECRET
-        })
-        response.raise_for_status()
-        return response.json().get("access_token")
-    except Exception as e:
-        logger.error(f"Failed to fetch Spotify token: {e}")
-        return None
-
-async def get_spotify_track(track_id: str) -> Optional[dict]:
-    """Fetch Spotify Track Details."""
-    token = await get_spotify_access_token()
-    if not token:
-        return None
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(SPOTIFY_TRACK_API_URL + track_id, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logger.error(f"Failed to fetch track details: {e}")
-        return None
 
 async def handle_spotify_request(client, message, url):
     if not url:
@@ -102,55 +58,51 @@ async def handle_spotify_request(client, message, url):
     )
 
     try:
-        # Extract track ID from the Spotify URL
-        track_id = url.split("/")[-1]
-        track = await get_spotify_track(track_id)
+        # Use the new API
+        api_url = f"https://iam404.serv00.net/sp.php?url={url}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data["status"]:
+                        await status_message.edit("**Found ☑️ Downloading...**")
+                    else:
+                        await status_message.edit("**Please Provide A Valid Spotify URL ❌**")
+                        return
+                else:
+                    await status_message.edit("**❌ Sorry Bro Spotify DL API Dead**")
+                    return
 
-        if not track:
-            await status_message.edit("**❌ Could not fetch Spotify track details.**")
-            return
-
-        title = track['name']
-        artists = ", ".join([artist['name'] for artist in track['artists']])
-        duration = await format_duration(track['duration_ms'])
-
-        # Fetch cover image
-        cover_url = track['album']['images'][0]['url'] if track['album']['images'] else None
+        # Extract track details from API response
+        title = data["title"]
+        artists = data["artist"]
+        duration = data["duration"]
+        album = data["album"]
+        release_date = data["releaseDate"]
+        spotify_url = data["spotify_url"]
+        download_url = data["download_link"]
+        cover_url = data.get("image") or data.get("cover")
+        
+        # Download cover image
         cover_path = None
         if cover_url:
             os.makedirs("temp_media", exist_ok=True)
             cover_path = f"temp_media/{await sanitize_filename(title)}.jpg"
             await download_image(cover_url, cover_path)
 
-        # Use the provided API to get the download link
-        api_url = f"https://tele-social.vercel.app/down?url={url}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(api_url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data["status"]:
-                        media_url = data["data"]["link"]
-                    else:
-                        await status_message.edit("**Please Provide A Valid Spotify URL ❌**")
-                        return
-                else:
-                    await status_message.edit("**Failed to reach the download API ❌**")
-                    return
-
-        # Download audio using the provided media URL
+        # Download audio
         safe_title = await sanitize_filename(title)
         output_filename = f"temp_media/{safe_title}.mp3"
         async with aiohttp.ClientSession() as session:
-            async with session.get(media_url) as response:
+            async with session.get(download_url) as response:
                 if response.status == 200:
                     async with aiofiles.open(output_filename, 'wb') as file:
                         await file.write(await response.read())
                 else:
-                    await status_message.edit("**❌ An Error Occurred**")
+                    await status_message.edit("**❌ Sorry Bro Spotify DL API Dead**")
                     return
 
-        await status_message.edit("**Found ☑️ Downloading...**")
-
+        # Prepare user info for caption
         if message.from_user:
             user_full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
             user_info = f"[{user_full_name}](tg://user?id={message.from_user.id})"
@@ -159,11 +111,14 @@ async def handle_spotify_request(client, message, url):
             group_url = f"https://t.me/{message.chat.username}" if message.chat.username else "this group"
             user_info = f"[{group_name}]({group_url})"
 
+        # Format caption according to the requested format
         audio_caption = (
-            f"🎵 **Title:** `{title}`\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 **Artist:** `{artists}`\n"
-            f"⏱️ **Duration:** `{duration}`\n"
+            f"🌟 **Title** `{title}`\n"
+            f"💥 **Artist** `{artists}`\n"
+            f"✨ **Duration** `{duration}`\n"
+            f"👀 **Album** `{album}`\n"
+            f"🎵 **Release Date** `{release_date}`\n"
+            f"🎸 **Listen On Spotify** [Click Here]({spotify_url})\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"**Downloaded By** {user_info}"
         )
@@ -189,7 +144,8 @@ async def handle_spotify_request(client, message, url):
 
         await status_message.delete()  # Delete the progress message after completion
     except Exception as e:
-        await status_message.edit(f"**❌ An error occurred: {e}**")
+        await status_message.edit("**❌ Sorry Bro Spotify DL API Dead**")
+        logger.error(f"Error processing Spotify request: {e}")
 
 async def progress_bar(current, total, status_message, start_time, last_update_time):
     """Display a progress bar for uploads."""
@@ -220,7 +176,7 @@ async def progress_bar(current, total, status_message, start_time, last_update_t
 def setup_spotify_handler(app: Client):
     # Create a regex pattern from the COMMAND_PREFIX list
     command_prefix_regex = f"[{''.join(map(re.escape, COMMAND_PREFIX))}]"
-    
+
     @app.on_message(filters.regex(rf"^{command_prefix_regex}sp(\s+\S+)?$") & (filters.private | filters.group))
     async def spotify_command(client, message):
         # Check if the message contains a Spotify URL
