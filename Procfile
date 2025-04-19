@@ -1,1 +1,1 @@
-worker: python3 main.py
+web: flask run -h 0.0.0.0 -p 8000 & python3 main.py
