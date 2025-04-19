@@ -1,3 +1,5 @@
+#Copyright @ISmartDevs
+#Channel t.me/TheSmartDev
 import os
 import logging
 from pathlib import Path
@@ -15,9 +17,7 @@ import requests
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 from moviepy import VideoFileClip
-from config import COMMAND_PREFIX
-
-YT_COOKIES_PATH = "./cookies/ItsSmartToolBot.txt"
+from config import COMMAND_PREFIX, YT_COOKIES_PATH
 
 # Configure logging
 logging.basicConfig(
@@ -93,7 +93,7 @@ def get_video_duration_moviepy(video_path: str) -> float:
         clip.close()  # Close the video file
         return duration
     except Exception as e:
-        print(f"Error getting video duration: {e}")
+        logger.error(f"Error getting video duration: {e}")
         return 0.0
 
 async def progress_bar(current, total, status_message, start_time, last_update_time):
@@ -122,7 +122,7 @@ async def progress_bar(current, total, status_message, start_time, last_update_t
     try:
         await status_message.edit(text)
     except Exception as e:
-        print(f"Error updating progress: {e}")
+        logger.error(f"Error updating progress: {e}")
 
 def get_ydl_opts(output_filename: str) -> dict:
     """
@@ -204,18 +204,24 @@ def download_video_sync(url: str) -> tuple:
         if thumbnail_url:
             thumbnail_path = prepare_thumbnail_sync(thumbnail_url, output_path)
 
-        return {
+        metadata = {
             'file_path': output_path,
             'title': title,
             'views': views,
             'duration': duration_str,
             'file_size': format_size(file_size),
             'thumbnail_path': thumbnail_path
-        }, None
+        }
+
+        logger.info(f"Video Metadata: {metadata}")
+        print(f"Video Metadata: {metadata}")  # Print metadata to the terminal
+        return metadata, None
 
     except yt_dlp.utils.DownloadError:
+        logger.error("Download failed: Video unavailable or restricted")
         return None, "Download failed: Video unavailable or restricted"
     except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
         return None, f"An unexpected error occurred: {e}"
 
 def download_audio_sync(url: str) -> tuple:
@@ -260,18 +266,24 @@ def download_audio_sync(url: str) -> tuple:
             os.remove(output_path)
             return None, "Audio file exceeds Telegram's 2GB limit."
 
-        return {
+        metadata = {
             'file_path': output_path,
             'title': title,
             'views': views,
             'duration': duration_str,
             'file_size': format_size(file_size),
             'thumbnail_path': prepare_thumbnail_sync(info['thumbnail'], output_path) if 'thumbnail' in info else None
-        }, None
+        }
+
+        logger.info(f"Audio Metadata: {metadata}")
+        print(f"Audio Metadata: {metadata}")  # Print metadata to the terminal
+        return metadata, None
 
     except yt_dlp.utils.DownloadError as e:
+        logger.error(f"Download failed: {e}")
         return None, f"Download failed: {e}"
     except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
         return None, f"An unexpected error occurred: {e}"
 
 def prepare_thumbnail_sync(thumbnail_url: str, output_path: str) -> str:
@@ -294,7 +306,7 @@ def prepare_thumbnail_sync(thumbnail_url: str, output_path: str) -> str:
             os.remove(thumbnail_temp_path)
             return thumbnail_resized_path
     except Exception as e:
-        print(f"Error preparing thumbnail: {e}")
+        logger.error(f"Error preparing thumbnail: {e}")
     return None
 
 async def search_youtube(query: str) -> Optional[str]:
@@ -318,7 +330,7 @@ async def search_youtube(query: str) -> Optional[str]:
             if 'entries' in info and info['entries']:
                 return info['entries'][0]['webpage_url']
     except Exception as e:
-        print(f"YouTube search error: {e}")
+        logger.error(f"YouTube search error: {e}")
 
     return None
 
@@ -360,6 +372,8 @@ async def handle_download_request(client: Client, message: Message, query: str):
         duration = result['duration']
         file_size = result['file_size']
         thumbnail_path = result.get('thumbnail_path')
+
+        logger.info(f"Video Downloaded: {title}, Views: {views}, Duration: {duration}, Size: {file_size}")
 
         if message.from_user:
             user_full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
@@ -405,6 +419,7 @@ async def handle_download_request(client: Client, message: Message, query: str):
         await search_message.delete()
 
     except Exception as e:
+        logger.error(f"An unexpected error occurred during video download: {e}")
         await search_message.edit(
             text=f"**YouTube Downloader API Dead **",
             parse_mode=ParseMode.MARKDOWN
@@ -432,7 +447,7 @@ async def handle_audio_request(client: Client, message: Message, query: str):
         result, error = await loop.run_in_executor(executor, download_audio_sync, video_url)
         if error:
             await status_message.edit(
-                text=f"**YouTube Downloader API Dead **",
+                text=f"**Incomplete or invalid YouTube URL**",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
@@ -448,6 +463,8 @@ async def handle_audio_request(client: Client, message: Message, query: str):
         duration = result['duration']
         file_size = result['file_size']
         thumbnail_path = result.get('thumbnail_path')
+
+        logger.info(f"Audio Downloaded: {title}, Views: {views}, Duration: {duration}, Size: {file_size}")
 
         if message.from_user:
             user_full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
@@ -491,6 +508,7 @@ async def handle_audio_request(client: Client, message: Message, query: str):
         await status_message.delete()
 
     except Exception as e:
+        logger.error(f"An unexpected error occurred during audio download: {e}")
         await status_message.edit_text(
             text=f"**YouTube Downloader API Dead **"
         )
@@ -498,7 +516,7 @@ async def handle_audio_request(client: Client, message: Message, query: str):
             os.remove(audio_path)
 
 def setup_downloader_handler(app: Client):
-# Create a regex pattern from the COMMAND_PREFIX list
+    # Create a regex pattern from the COMMAND_PREFIX list
     command_prefix_regex = f"[{''.join(map(re.escape, COMMAND_PREFIX))}]"
 
     @app.on_message(filters.regex(rf"^{command_prefix_regex}(yt|video)(\s+.+)?$"))
