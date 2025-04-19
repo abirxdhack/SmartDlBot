@@ -1,7 +1,7 @@
-# Use the full official Python 3.10 image
+# Use the official Python image (full version) as a base
 FROM python:3.10
 
-# Set the working directory
+# Set the working directory in the container
 WORKDIR /app
 
 # Install system dependencies (only ffmpeg now)
@@ -10,18 +10,15 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy the current directory contents into the container at /app
+COPY . /app
+
+# Install Python dependencies from requirements.txt
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
-COPY . .
+# Expose the port (optional for Heroku, as it's dynamically assigned)
+EXPOSE 5000
 
-# Set Flask app environment (only needed if using `flask run`)
-ENV FLASK_APP=main.py
-
-# Expose the port your app uses
-EXPOSE 8000
-
-# Command to run the bot and Flask app together
-CMD flask run -h 0.0.0.0 -p 8000 & python3 main.py
+# Run the Flask server and bot when the container starts
+CMD ["python", "main.py"]
