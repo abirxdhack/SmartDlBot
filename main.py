@@ -1,10 +1,13 @@
+import os
+import asyncio
+from threading import Thread
+from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-import asyncio
 from pyrogram.enums import ParseMode
-import os
 from config import API_ID, API_HASH, BOT_TOKEN
 from utils import LOGGER
+
 # Import the handlers
 from youtube.youtube import setup_downloader_handler
 from pinterest.pinterest import setup_pinterest_handler
@@ -15,6 +18,21 @@ from instagram.instagram import setup_in_handlers
 from adminpanel.restart.restart import setup_restart_handler
 from adminpanel.admin.admin import setup_admin_handler
 from adminpanel.logs.logs import setup_logs_handler
+
+# Setup minimal Flask server to prevent Heroku R10 error
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def index():
+    return "Smart Tool Bot is running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    flask_app.run(host="0.0.0.0", port=port)
+
+# Start Flask in background
+Thread(target=run_flask).start()
+
 # Initialize the bot client
 app = Client(
     "app_session",
@@ -23,7 +41,7 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# Setup handlers
+# Setup all handlers
 setup_downloader_handler(app)
 setup_pinterest_handler(app)
 setup_dl_handlers(app)
@@ -39,14 +57,12 @@ async def send_start_message(client, message):
     chat_id = message.chat.id
     full_name = f"{message.from_user.first_name} {message.from_user.last_name}" if message.from_user.last_name else message.from_user.first_name
 
-    # Animation messages
     animation_message = await message.reply_text("<b>Starting Smart Tool ⚙️...</b>", parse_mode=ParseMode.HTML)
-    await asyncio.sleep(0.4)  # Use asyncio.sleep instead of sleep
+    await asyncio.sleep(0.4)
     await animation_message.edit_text("<b>Generating Session Keys Please Wait...</b>", parse_mode=ParseMode.HTML)
-    await asyncio.sleep(0.4)  # Use asyncio.sleep instead of sleep
+    await asyncio.sleep(0.4)
     await animation_message.delete()
 
-    # Main welcome message
     start_message = (
         f"<b>Hi {full_name}! Welcome To This Bot...</b>\n"
         "<b>━━━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
@@ -75,24 +91,14 @@ async def help_menu_callback(client: Client, callback_query: CallbackQuery):
         "<b>USAGE:</b>\n"
         "Download videos and tracks from popular platforms using these commands:\n\n"
         "➢ <b>/fb [Video URL]</b> - Download a Facebook video.\n"
-        "   - Example: <code>/fb https://www.facebook.com/share/v/18VH1yNXoq/</code> (Downloads the specified Facebook video)\n"
-        "   - Note: Private Facebook videos cannot be downloaded.\n\n"
         "➢ <b>/pin [Video URL]</b> - Download a Pinterest video.\n"
-        "   - Example: <code>/pin https://pin.it/6GoDMRwmE</code> (Downloads the specified Pinterest video)\n\n"
         "➢ <b>/tt [Video URL]</b> - Download a TikTok video.\n"
-        "   - Example: <code>/tt https://vt.tiktok.com/ZSMV19Kfu/</code> (Downloads the specified TikTok video)\n\n"
         "➢ <b>/in [Video URL]</b> - Download Instagram Reels.\n"
-        "   - Example: <code>/in https://www.instagram.com/reel/C_vOYErJBm7/?igsh=YzljYTk1ODg3Zg==</code> (Downloads the specified Instagram reel)\n"
-        "   - Note: 18+ Instagram Reels cannot be downloaded.\n\n"
         "➢ <b>/sp [Track URL]</b> - Download a Spotify track.\n"
-        "   - Example: <code>/sp https://open.spotify.com/track/7ouBSPZKQpm7zQz2leJXta</code> (Downloads the specified Spotify track)\n\n"
         "➢ <b>/yt [Video URL]</b> - Download a YouTube video.\n"
-        "   - Example: <code>/yt https://youtu.be/In8bfGnXavw</code> (Downloads the specified YouTube video)\n\n"
-        "➢ <b>/song [Video URL]</b> - Download a YouTube video as an MP3 file.\n"
-        "   - Example: <code>/song https://youtu.be/In8bfGnXavw</code> (Converts and downloads the video as MP3)\n\n"
-        ">NOTE:\n"
-        "1️⃣ Provide a valid public URL for each platform to download successfully.\n\n"
-        ">🔔 For Bot Update News: <a href='https://t.me/Modvip_rm'>Join Now</a>"
+        "➢ <b>/song [Video URL]</b> - Download as MP3\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🔔 For Bot Updates: <a href='https://t.me/ModVip_rm'>Join Now</a>"
     )
 
     await callback_query.message.edit_text(
@@ -108,16 +114,12 @@ async def help_menu_callback(client: Client, callback_query: CallbackQuery):
 async def about_me_callback(client: Client, callback_query: CallbackQuery):
     about_message = (
         "<b>Name:</b> Smart Tool ⚙️\n"
-        "<b>Version:</b> 3.0 (Beta Testing) 🛠\n\n"
-        "<b>Development Team:</b>\n"
-        "- <b>Creator:</b> <a href='https://t.me/abirxdhackz'>⏤͟͞〲ᗩᗷiᖇ 𓊈乂ᗪ𓊉 👨‍💻</a>\n"
-        "<b>Technical Stack:</b>\n"
-        "- <b>Language:</b> Python 🐍\n"
-        "- <b>Libraries:</b> Aiogram, Pyrogram And Telethon 📚\n"
-        "- <b>Database:</b> MongoDB Database 🗄\n"
-        "- <b>Hosting:</b> Hostinger VPS 🌐\n\n"
-        "<b>About:</b> Smart Tool ⚙️ The ultimate toolkit on Telegram, offering Facebook,YouTube,Pinterest,Spotify Downloader. Simplify your tasks with ease!\n\n"
-        ">🔔 For Bot Update News: <a href='https://t.me/ModVipRM'>Join Now</a>"
+        "<b>Version:</b> 3.0 (Beta Testing)\n\n"
+        "<b>Creator:</b> <a href='https://t.me/abirxdhackz'>⏤͟͞〲ᗩᗷiᖇ 𓊈乂ᗪ𓊉 👨‍💻</a>\n"
+        "<b>Tech:</b> Python · Pyrogram · Telethon · MongoDB\n"
+        "<b>About:</b> Download from YouTube, Instagram, Facebook, Pinterest, TikTok, Spotify.\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🔔 Updates: <a href='https://t.me/ModVipRM'>Join Here</a>"
     )
 
     await callback_query.message.edit_text(
@@ -153,5 +155,6 @@ async def start_menu_callback(client: Client, callback_query: CallbackQuery):
         disable_web_page_preview=True,
     )
 
-print("Bot Successfully Started! 💥")
+# Final confirmation that the bot has started
+print("✅ Bot Successfully Started and Flask is running on Heroku.")
 app.run()
