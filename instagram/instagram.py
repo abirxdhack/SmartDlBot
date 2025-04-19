@@ -1,3 +1,5 @@
+#Copyright @ISmartDevs
+#Channel t.me/TheSmartDev
 import os
 import re
 import logging
@@ -22,13 +24,6 @@ logger = logging.getLogger(__name__)
 # Configuration
 class Config:
     TEMP_DIR = Path("temp")
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Connection': 'keep-alive',
-        'Referer': 'https://www.instagram.com/',
-    }
 
 Config.TEMP_DIR.mkdir(exist_ok=True)
 
@@ -38,7 +33,7 @@ class InstagramDownloader:
 
     async def download_reel(self, url: str, downloading_message: Message) -> Optional[dict]:
         self.temp_dir.mkdir(exist_ok=True)
-        api_url = f"https://tele-social.vercel.app/down?url={url}"
+        api_url = f"https://www.alphaapis.org/Instagram/dl/v1?url={url}"
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -47,11 +42,11 @@ class InstagramDownloader:
                     if response.status == 200:
                         data = await response.json()
                         logger.info(f"API response: {data}")
-                        if data["status"]:
+                        if data["success"]:
                             await downloading_message.edit_text("**Found ☑️ Downloading...**", parse_mode=ParseMode.MARKDOWN)
-                            video_url = data["data"][0]["url"]
-                            title = data["data"][0].get("title", "Instagram Reel")
-                            filename = self.temp_dir / f"{title}.mp4"
+                            video_url = data["result"][0]["downloadLink"]
+                            title = data["result"][0].get("filename", "Instagram Reel")
+                            filename = self.temp_dir / title
                             await self._download_file(session, video_url, filename)
                             return {
                                 'title': title,
@@ -82,7 +77,7 @@ async def progress_bar(current, total, status_message, start_time, last_update_t
     uploaded = current / 1024 / 1024  # Uploaded size in MB
     total_size = total / 1024 / 1024  # Total size in MB
 
-    # Throttle updates: Only update if at least 1 second has passed since the last update
+    # Throttle updates: Only update if at least  second has passed since the last update
     if time.time() - last_update_time[0] < 1:
         return
     last_update_time[0] = time.time()  # Update the last update time
