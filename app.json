@@ -1,0 +1,37 @@
+{
+  "name": "SmartDlBot",
+  "description": "A smart Telegram bot with Spotify and MongoDB integration.",
+  "repository": "https://github.com/abirxdhack/SmartDlBot",
+  "keywords": ["telegram", "bot", "docker", "flask", "ffmpeg"],
+  "stack": "container",
+  "env": {
+    "API_ID": {
+      "description": "Telegram API ID",
+      "required": true
+    },
+    "API_HASH": {
+      "description": "Telegram API Hash",
+      "required": true
+    },
+    "BOT_TOKEN": {
+      "description": "Telegram Bot Token",
+      "required": true
+    },
+    "ADMIN_IDS": {
+      "description": "Comma-separated list of Telegram admin user IDs",
+      "required": true
+    },
+    "SPOTIFY_CLIENT_ID": {
+      "description": "Spotify Client ID",
+      "required": true
+    },
+    "SPOTIFY_CLIENT_SECRET": {
+      "description": "Spotify Client Secret",
+      "required": true
+    },
+    "MONGO_URL": {
+      "description": "MongoDB connection string",
+      "required": true
+    }
+  }
+}
