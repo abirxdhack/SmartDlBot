@@ -12,6 +12,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.types import Message
 from typing import Optional
 from config import COMMAND_PREFIX
+import urllib.parse  # Added for URL encoding
 
 # Configure logging
 logging.basicConfig(
@@ -42,11 +43,14 @@ async def download_image(url: str, output_path: str) -> Optional[str]:
         logger.error(f"Failed to download image: {e}")
     return None
 
-async def handle_spotify_request(client, message, url):
-    if not url:
+async def handle_spotify_request(client, message, input_text):
+    # Check if input_text is a Spotify URL or a search query
+    is_url = input_text and ('open.spotify.com' in input_text or 'spotify.link' in input_text)
+
+    if not input_text:
         await client.send_message(
             chat_id=message.chat.id,
-            text="**Please provide a track Spotify URL ❌**",
+            text="**Please provide a track Spotify URL or a search query ❌**",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -58,20 +62,52 @@ async def handle_spotify_request(client, message, url):
     )
 
     try:
-        # Use the new API
-        api_url = f"https://iam404.serv00.net/sp.php?url={url}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(api_url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data["status"]:
-                        await status_message.edit("**Found ☑️ Downloading...**")
+        if is_url:
+            # Handle Spotify URL
+            api_url = f"https://iam404.serv00.net/sp.php?url={input_text}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data["status"]:
+                            await status_message.edit("**Found ☑️ Downloading...**")
+                        else:
+                            await status_message.edit("**Please Provide A Valid Spotify URL ❌**")
+                            return
                     else:
-                        await status_message.edit("**Please Provide A Valid Spotify URL ❌**")
+                        await status_message.edit("**❌ Sorry Bro Spotify DL API Dead**")
                         return
-                else:
-                    await status_message.edit("**❌ Sorry Bro Spotify DL API Dead**")
-                    return
+        else:
+            # Handle search query
+            # Encode the query to handle spaces and special characters
+            encoded_query = urllib.parse.quote(input_text)
+            api_url = f"https://iam404.serv00.net/spotify_search.php?q={encoded_query}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data["type"] == "search" and data["data"]:
+                            await status_message.edit("**Found ☑️ Downloading...**")
+                            # Use the first result
+                            track = data["data"][0]
+                            # Fetch track details using the Spotify URL
+                            track_url = track["external_urls"]["spotify"]
+                            track_api_url = f"https://iam404.serv00.net/sp.php?url={track_url}"
+                            async with session.get(track_api_url) as track_response:
+                                if track_response.status == 200:
+                                    data = await track_response.json()
+                                    if not data["status"]:
+                                        await status_message.edit("**Failed to fetch track details ❌**")
+                                        return
+                                else:
+                                    await status_message.edit("**❌ Sorry Bro Spotify DL API Dead**")
+                                    return
+                        else:
+                            await status_message.edit("**No results found for the query ❌**")
+                            return
+                    else:
+                        await status_message.edit("**❌ Sorry Bro Spotify Search API Dead**")
+                        return
 
         # Extract track details from API response
         title = data["title"]
@@ -82,7 +118,7 @@ async def handle_spotify_request(client, message, url):
         spotify_url = data["spotify_url"]
         download_url = data["download_link"]
         cover_url = data.get("image") or data.get("cover")
-        
+
         # Download cover image
         cover_path = None
         if cover_url:
@@ -177,9 +213,9 @@ def setup_spotify_handler(app: Client):
     # Create a regex pattern from the COMMAND_PREFIX list
     command_prefix_regex = f"[{''.join(map(re.escape, COMMAND_PREFIX))}]"
 
-    @app.on_message(filters.regex(rf"^{command_prefix_regex}sp(\s+\S+)?$") & (filters.private | filters.group))
+    @app.on_message(filters.regex(rf"^{command_prefix_regex}sp(\s+.*)?$") & (filters.private | filters.group))
     async def spotify_command(client, message):
-        # Check if the message contains a Spotify URL
+        # Check if the message contains a Spotify URL or query
         command_parts = message.text.split(maxsplit=1)
-        url = command_parts[1] if len(command_parts) > 1 else None
-        await handle_spotify_request(client, message, url)
+        input_text = command_parts[1].strip() if len(command_parts) > 1 else None
+        await handle_spotify_request(client, message, input_text)
